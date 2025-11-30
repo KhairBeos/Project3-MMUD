@@ -1,12 +1,15 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
-import "../styles/globals.css";
+import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "SecureChat - End-to-End Encrypted Messaging",
-  description: "Secure chat application with E2E encryption",
+  title: "Chat App - Kết nối bạn bè",
+  description: "Ứng dụng nhắn tin thời gian thực",
+  icons: {
+    icon: "/favicon.ico", // Bạn có thể thay icon sau
+  },
 };
 
 export default function RootLayout({
@@ -15,8 +18,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body className={inter.className}>{children}</body>
+    <html lang="vi">
+      <body className={inter.className}>
+        {/* Đây là nơi các trang con (page.tsx) được hiển thị */}
+        {children}
+      </body>
     </html>
   );
 }
