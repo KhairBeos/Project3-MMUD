@@ -8,9 +8,10 @@ import * as nodemailer from 'nodemailer';
 import { Transporter } from 'nodemailer';
 import { ConfigService } from '@nestjs/config';
 import { VerifyEmailDto } from './dto/verify-email.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import { GoogleProfile } from './interfaces/google-profile.interface';
 import { AuthenticatedUser } from './interfaces/authenticated-user.interface';
-import { Types } from 'mongoose';
 
 @Injectable()
 export class AuthService {
@@ -107,7 +108,7 @@ export class AuthService {
     }
 
     const otp = crypto.randomInt(100000, 999999).toString();
-    const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 phút
+    const otpExpires = new Date(Date.now() + 5 * 60 * 1000); // 5 phút
 
     await this.usersService.create(registerDto, otp, otpExpires);
     await this._sendVerificationEmail(registerDto.email, otp);
@@ -128,7 +129,7 @@ export class AuthService {
       html: `
         <p>Cảm ơn bạn đã đăng ký.</p>
         <p>Mã OTP của bạn là: <b>${otp}</b></p>
-        <p>Mã này sẽ hết hạn sau 10 phút.</p>
+        <p>Mã này sẽ hết hạn sau 5 phút.</p>
       `,
     };
 
@@ -155,7 +156,7 @@ export class AuthService {
     }
 
     const otp = crypto.randomInt(100000, 999999).toString();
-    const otpExpires = new Date(Date.now() + 10 * 60 * 1000);
+    const otpExpires = new Date(Date.now() + 5 * 60 * 1000); // 5 phút
 
     user.verificationOtp = otp;
     user.verificationOtpExpires = otpExpires;
@@ -220,12 +221,104 @@ export class AuthService {
         throw new BadRequestException(`Email này đã được đăng ký bằng ${user.authProvider}.`);
       }
 
-      const userId = (user._id as Types.ObjectId).toString();
+      const userId = user._id.toString();
       const updatedUser = await this.usersService.linkGoogleAccount(userId, profile);
       return updatedUser.toObject() as unknown as AuthenticatedUser;
     }
 
     const newUser = await this.usersService.createFromGoogleProfile(profile);
     return newUser.toObject() as unknown as AuthenticatedUser;
+  }
+
+  /**
+   * Quên mật khẩu
+   */
+  async forgotPassword(forgotPasswordDto: ForgotPasswordDto): Promise<{ message: string }> {
+    const user = await this.usersService.findByEmail(forgotPasswordDto.email);
+
+    if (!user) {
+      // Không tiết lộ email có tồn tại hay không (bảo mật)
+      return { message: 'Nếu email tồn tại, link đặt lại mật khẩu sẽ được gửi.' };
+    }
+
+    if ((user.authProvider as AuthProvider) !== AuthProvider.LOCAL) {
+      return {
+        message:
+          'Tài khoản này được đăng ký bằng ' + user.authProvider + '. Không thể đặt lại mật khẩu.',
+      };
+    }
+
+    // Tạo token đặt lại mật khẩu (dùng OTP + uuid hoặc jwt token riêng)
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const resetTokenExpires = new Date(Date.now() + 30 * 60 * 1000); // 30 phút
+
+    user.resetPasswordToken = resetToken;
+    user.resetPasswordTokenExpires = resetTokenExpires;
+    await user.save();
+
+    // Gửi email với link đặt lại mật khẩu
+    await this._sendPasswordResetEmail(user.email, resetToken);
+
+    return { message: 'Nếu email tồn tại, link đặt lại mật khẩu sẽ được gửi.' };
+  }
+
+  /**
+   * Gửi email đặt lại mật khẩu (Private)
+   */
+  private async _sendPasswordResetEmail(email: string, resetToken: string): Promise<void> {
+    const resetLink = `${process.env.FRONTEND_URL || 'http://localhost:3001'}/reset-password?email=${encodeURIComponent(email)}&token=${resetToken}`;
+
+    const mailOptions = {
+      from: `"My Chat App" <${this.configService.get<string>('EMAIL_USER')}>`,
+      to: email,
+      subject: 'Link đặt lại mật khẩu Chat App',
+      html: `
+        <p>Bạn đã yêu cầu đặt lại mật khẩu.</p>
+        <p><a href="${resetLink}">Nhấn vào đây để đặt lại mật khẩu</a></p>
+        <p>Link sẽ hết hạn sau 30 phút.</p>
+        <p>Nếu bạn không yêu cầu, bỏ qua email này.</p>
+      `,
+    };
+
+    try {
+      await this.transporter.sendMail(mailOptions);
+    } catch (error) {
+      console.error('Không thể gửi email:', error);
+      throw new BadRequestException('Không thể gửi email. Vui lòng thử lại.');
+    }
+  }
+
+  /**
+   * Đặt lại mật khẩu
+   */
+  async resetPassword(resetPasswordDto: ResetPasswordDto): Promise<{ message: string }> {
+    const { email, token, newPassword } = resetPasswordDto;
+
+    const user = await this.usersService.findByEmailForPasswordReset(email);
+
+    if (!user) {
+      throw new BadRequestException('Email không tồn tại.');
+    }
+
+    if (!user.resetPasswordToken || !user.resetPasswordTokenExpires) {
+      throw new BadRequestException('Yêu cầu đặt lại mật khẩu không hợp lệ.');
+    }
+
+    if (user.resetPasswordToken !== token) {
+      throw new BadRequestException('Token không hợp lệ.');
+    }
+
+    if (new Date() > user.resetPasswordTokenExpires) {
+      throw new BadRequestException('Link đặt lại mật khẩu đã hết hạn.');
+    }
+
+    // Hash mật khẩu mới
+    user.password = newPassword;
+    user.resetPasswordToken = undefined;
+    user.resetPasswordTokenExpires = undefined;
+
+    await user.save();
+
+    return { message: 'Mật khẩu đã được đặt lại thành công. Vui lòng đăng nhập lại.' };
   }
 }
