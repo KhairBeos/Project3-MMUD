@@ -26,6 +26,7 @@ export class UsersService {
       verificationOtpExpires: otpExpires,
       isEmailVerified: false,
       authProvider: AuthProvider.LOCAL,
+      googleId: undefined, // Ensure googleId is not set for local auth
     });
     return newUser.save();
   }
@@ -40,6 +41,14 @@ export class UsersService {
     return this.userModel
       .findOne({ email: email.toLowerCase() })
       .select('+verificationOtp +verificationOtpExpires')
+      .exec();
+  }
+
+  // Hàm tìm user dùng cho đặt lại mật khẩu (bao gồm các trường reset password bị `select: false`)
+  async findByEmailForPasswordReset(email: string): Promise<User | null> {
+    return this.userModel
+      .findOne({ email: email.toLowerCase() })
+      .select('+resetPasswordToken +resetPasswordTokenExpires')
       .exec();
   }
 

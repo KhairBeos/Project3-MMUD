@@ -84,6 +84,20 @@ export class User extends Document {
   })
   verificationOtpExpires?: Date;
 
+  @Prop({
+    type: String,
+    select: false,
+    default: null,
+  })
+  resetPasswordToken?: string;
+
+  @Prop({
+    type: Date,
+    select: false,
+    default: null,
+  })
+  resetPasswordTokenExpires?: Date;
+
   // --- Trạng thái (Presence) ---
 
   @Prop({ default: false })

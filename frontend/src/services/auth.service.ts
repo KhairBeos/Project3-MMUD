@@ -30,6 +30,18 @@ export const authService = {
     return response.data;
   },
 
+  // Quên mật khẩu
+  forgotPassword: async (email: string) => {
+    const response = await api.post('/auth/forgot-password', { email });
+    return response.data;
+  },
+
+  // Đặt lại mật khẩu
+  resetPassword: async (email: string, token: string, newPassword: string) => {
+    const response = await api.post('/auth/reset-password', { email, token, newPassword });
+    return response.data;
+  },
+
   // Đăng xuất
   logout: async () => {
     // Gọi backend để báo logout (tùy chọn)
